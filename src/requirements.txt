@@ -1,0 +1,10 @@
+openpyxl==3.0.9
+pygobnilp==1.0.0
+seaborn==0.11.2
+gurobipy==9.5.2
+jinja2==3.1.2
+MarkupSafe==2.1.1
+pandas
+numpy
+matplotlib
+statsmodels==0.13.2
