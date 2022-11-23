@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from typing import List
 
 
 class VAR_bn:
@@ -8,22 +9,27 @@ class VAR_bn:
         self,
         data_train: pd.DataFrame,
         p: int,
-        mask: np.array = None,
+        var_list: List[str],
+        mask: np.ndarray = np.array([0]),
     ) -> None:
         """
         Args:
             data_train (pd.DataFrame): training subset of Time Series dataset
             p (int): number of time lag variables - order of lag
-            mask (np.array, optional): masking of variables to learn linear regression. default none, will take all variables
+            mask (np.array, optional): masking of variables to learn linear regression. default none, will take all variables. Defaults to np.array([0]).
+            var_list (List[str]): List with order of variables to reorder the DataFrame data_train
         """
 
         self.data_train = data_train
-
-        if mask is None:
-            self.mask = np.ones((self.data_train.shape[1], self.data_train.shape[1]))
+        self.p = p
+        self.var_list = var_list
+        if np.allclose(mask, 0):
+            self.mask = np.ones(
+                (self.data_train.shape[1], self.p * self.data_train.shape[1])
+            )
         else:
             self.mask = mask
-        self.p = p
+
         self.models = {}
 
     def insert_shifted_data(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -39,7 +45,7 @@ class VAR_bn:
         cols_to_shift = data.columns
         for shift in range(1, self.p + 1):
             for col in cols_to_shift:
-                data_shifted.loc[:, f"{col}_{shift}_shifted"] = data.loc[:, col].shift(
+                data_shifted.loc[:, f"{col}_shifted_{shift}"] = data.loc[:, col].shift(
                     shift
                 )
 
@@ -47,17 +53,13 @@ class VAR_bn:
 
     def train_model_per_col(self) -> None:
         """Runs for each column multivariate linear regression by only taking into account features that are unmasked"""
+        data_shifted = self.insert_shifted_data(self.data_train)
+        data_shifted = data_shifted[[col for col in self.var_list if "shifted" in col]]
+        data_shifted = data_shifted[self.p :]
         for i, col in enumerate(self.data_train.columns):
             mask = np.squeeze(np.asarray(self.mask[i, :]) > 0)
-            data = self.data_train.iloc[:, mask].copy()
-            #
-            data_shifted = self.insert_shifted_data(data)
-            data_shifted = data_shifted[
-                [col for col in data_shifted.columns if col.endswith("_shifted")]
-            ].copy()
-            data_shifted = data_shifted[self.p :].copy()
             col_model = sm.OLS(
-                self.data_train[self.p :][col].values, data_shifted.values
+                self.data_train[self.p :][col].values, data_shifted.iloc[:, mask].values
             ).fit()
             self.models[col] = col_model
 
@@ -73,15 +75,16 @@ class VAR_bn:
         data_cols = data.columns
         data_pred = data.copy()
         data_train = pd.concat([self.data_train.tail(self.p), data_pred])
+        data_shifted = self.insert_shifted_data(data_train)
+        data_shifted = data_shifted[[col for col in self.var_list if "shifted" in col]]
+        data_shifted = data_shifted[self.p :]
+
         for i, col in enumerate(self.data_train.columns):
             data_pred[f"{col}_pred"] = None
             mask = np.squeeze(np.asarray(self.mask[i, :]) > 0)
-            data_shifted = self.insert_shifted_data(data_train.iloc[:, mask])
-            data_shifted = data_shifted.fillna(0)
-            data_shifted = data_shifted[
-                [col for col in data_shifted.columns if col.endswith("_shifted")]
-            ]
-            data_pred[f"{col}_pred"] = self.models[col].predict(data_shifted.values)[1:]
+            data_pred[f"{col}_pred"] = self.models[col].predict(
+                data_shifted.iloc[:, mask].values
+            )
         data_pred = data_pred.drop(columns=data_cols)
         data_pred.columns = data_cols
         return data_pred

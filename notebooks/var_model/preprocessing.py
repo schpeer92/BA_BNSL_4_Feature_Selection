@@ -4,20 +4,34 @@ from statsmodels.tsa.api import VAR
 from statsmodels.tsa.stattools import adfuller
 
 
-def ts_differencing(df: pd.DataFrame) -> pd.DataFrame:
-    df_stationary = df.copy()
-    # df_stationary = np.sqrt(df_stationary)
-    df_stationary = df_stationary.diff().dropna()
-    return df_stationary
+def ts_differencing(df: pd.DataFrame, order: int = 1) -> pd.DataFrame:
+    if order == 1:
+        df_diff = df.copy()
+        df_diff = df_diff - df_diff.shift(1).fillna(0)
+
+    elif order == 2:
+        df_diff = df.copy()
+        df_diff = df_diff - 2 * df_diff.shift(1).fillna(0) + df_diff.shift(2).fillna(0)
+
+    else:
+        return print("order to high")
+    return df_diff
 
 
 def undo_ts_differencing(
-    df_stationary: pd.DataFrame, df_original: pd.DataFrame
+    df: pd.DataFrame, df_original: pd.DataFrame, order: int = 1
 ) -> pd.DataFrame:
-    df_unstationary = df_stationary.copy()
-    df_unstationary = df_unstationary**2
-    df_unstationary = df_unstationary + df_original.shift(1)
-    return df_unstationary
+    if order == 1:
+        df_diff = df.copy()
+        df_diff = df_diff + df_original.shift(1).fillna(0)
+    else:
+        df_diff = df.copy()
+        df_diff = (
+            df_diff
+            + 2 * df_original.shift(1).fillna(0)
+            - df_original.shift(2).fillna(0)
+        )
+    return df_diff
 
 
 def adf_test(df: pd.DataFrame, title=""):
